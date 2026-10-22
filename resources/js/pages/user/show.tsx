@@ -19,7 +19,11 @@ import { AchievementsShelf } from '@/components/achievements-shelf';
 import { ActivityGraph } from '@/components/activity-graph';
 import { ActivityStreaks } from '@/components/activity-streaks';
 import { BioText } from '@/components/bio-text';
-import { CommitFeed, EmptyFeed } from '@/components/commit-feed';
+import {
+    CommitFeed,
+    CommitSkeleton,
+    EmptyFeed,
+} from '@/components/commit-feed';
 import { FollowButton } from '@/components/follow-button';
 import { GitHubIcon } from '@/components/github-icon';
 import {
@@ -43,7 +47,12 @@ import { refreshSharedState, useSharedState } from '@/hooks/use-shared-state';
 import AppLayout from '@/layouts/app-layout';
 import { commitStateKey } from '@/lib/commit-state';
 import { exactCountTitle, formatCount } from '@/lib/numbers';
-import { dateLocale, laneColor, laneTint } from '@/lib/utils';
+import {
+    dateLocale,
+    laneColor,
+    laneTint,
+    withViewTransition,
+} from '@/lib/utils';
 import type {
     Achievements,
     Activity,
@@ -93,6 +102,28 @@ export default function Show({
         null,
     );
     const [isAchievementsOpen, setIsAchievementsOpen] = useState(false);
+    // The tapped tab shows as selected while its commits load; a visit that lands on another tab (back, forward)
+    // selects that one instead.
+    const [selectedTab, setSelectedTab] = useState(tab);
+    const [loadedTab, setLoadedTab] = useState(tab);
+
+    if (tab !== loadedTab) {
+        setLoadedTab(tab);
+        setSelectedTab(tab);
+    }
+
+    const feedTabs = [
+        {
+            value: 'commits',
+            title: 'Commits',
+            href: show(user),
+        },
+        {
+            value: 'replies',
+            title: 'Replies',
+            href: show(user, { query: { tab: 'replies' } }),
+        },
+    ] as const;
     const [pasteisCount] = useSharedState(
         commitStateKey('pasteis_received', user.id),
         pasteisReceived ?? 0,
@@ -439,63 +470,75 @@ export default function Show({
                     preserveScroll
                     only={['tab', 'commits', 'pinnedCommit']}
                     reset={['commits']}
-                    tabs={[
-                        {
-                            title: 'Commits',
-                            href: show(user),
-                            isActive: tab === 'commits',
-                        },
-                        {
-                            title: 'Replies',
-                            href: show(user, { query: { tab: 'replies' } }),
-                            isActive: tab === 'replies',
-                        },
-                    ]}
-                />
-
-                <CommitFeed
-                    key={`${user.id}:${tab}`}
-                    commits={commits}
-                    pinnedCommit={tab === 'commits' ? pinnedCommit : null}
-                    threadActions={
-                        isCurrentUser && tab === 'commits'
-                            ? (commit) => (
-                                  <PinCommitButton
-                                      commit={commit}
-                                      isPinned={commit.id === pinnedCommit?.id}
-                                  />
-                              )
-                            : undefined
-                    }
-                    highlightedPeriod={highlightedPeriod}
-                    end={
-                        tab === 'replies'
-                            ? isCurrentUser
-                                ? 'That was your first reply.'
-                                : `That's @${user.username}'s first reply.`
-                            : isCurrentUser
-                              ? 'That was your first commit. Everyone starts somewhere.'
-                              : `That's @${user.username}'s root commit.`
-                    }
-                    empty={
-                        tab === 'replies' ? (
-                            <EmptyFeed command="fatal: no replies yet">
-                                {isCurrentUser
-                                    ? 'Your replies show up here. Join a conversation from your log.'
-                                    : `@${user.username} hasn't replied to anything yet.`}
-                            </EmptyFeed>
-                        ) : isCurrentUser ? (
-                            <EmptyFeed command="fatal: you do not have any commits yet">
-                                Your commits show up here. Make your first one
-                                from your log.
-                            </EmptyFeed>
-                        ) : (
-                            <EmptyFeed command="fatal: no commits yet">
-                                @{user.username} hasn't committed anything yet.
-                            </EmptyFeed>
+                    onSelect={(index) =>
+                        void withViewTransition(() =>
+                            setSelectedTab(feedTabs[index].value),
                         )
                     }
+                    tabs={feedTabs.map((feedTab) => ({
+                        ...feedTab,
+                        isActive: feedTab.value === selectedTab,
+                    }))}
                 />
+
+                {selectedTab !== tab ? (
+                    <div
+                        role="status"
+                        aria-label={`Loading ${selectedTab}`}
+                        className="motion-safe:animate-in motion-safe:delay-300 motion-safe:fill-mode-backwards motion-safe:fade-in"
+                    >
+                        {[0, 1, 2, 3, 4].map((index) => (
+                            <CommitSkeleton key={index} />
+                        ))}
+                    </div>
+                ) : (
+                    <CommitFeed
+                        key={`${user.id}:${tab}`}
+                        commits={commits}
+                        pinnedCommit={tab === 'commits' ? pinnedCommit : null}
+                        threadActions={
+                            isCurrentUser && tab === 'commits'
+                                ? (commit) => (
+                                      <PinCommitButton
+                                          commit={commit}
+                                          isPinned={
+                                              commit.id === pinnedCommit?.id
+                                          }
+                                      />
+                                  )
+                                : undefined
+                        }
+                        highlightedPeriod={highlightedPeriod}
+                        end={
+                            tab === 'replies'
+                                ? isCurrentUser
+                                    ? 'That was your first reply.'
+                                    : `That's @${user.username}'s first reply.`
+                                : isCurrentUser
+                                  ? 'That was your first commit. Everyone starts somewhere.'
+                                  : `That's @${user.username}'s root commit.`
+                        }
+                        empty={
+                            tab === 'replies' ? (
+                                <EmptyFeed command="fatal: no replies yet">
+                                    {isCurrentUser
+                                        ? 'Your replies show up here. Join a conversation from your log.'
+                                        : `@${user.username} hasn't replied to anything yet.`}
+                                </EmptyFeed>
+                            ) : isCurrentUser ? (
+                                <EmptyFeed command="fatal: you do not have any commits yet">
+                                    Your commits show up here. Make your first
+                                    one from your log.
+                                </EmptyFeed>
+                            ) : (
+                                <EmptyFeed command="fatal: no commits yet">
+                                    @{user.username} hasn't committed anything
+                                    yet.
+                                </EmptyFeed>
+                            )
+                        }
+                    />
+                )}
             </div>
         </>
     );
