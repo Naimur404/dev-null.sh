@@ -43,6 +43,7 @@ import {
     UserModerationStatus,
 } from '@/components/user-moderation-menu';
 import { UserSafetyMenu } from '@/components/user-safety-menu';
+import { useSelectedTab } from '@/hooks/use-selected-tab';
 import { refreshSharedState, useSharedState } from '@/hooks/use-shared-state';
 import AppLayout from '@/layouts/app-layout';
 import { commitStateKey } from '@/lib/commit-state';
@@ -102,15 +103,7 @@ export default function Show({
         null,
     );
     const [isAchievementsOpen, setIsAchievementsOpen] = useState(false);
-    // The tapped tab shows as selected while its commits load; a visit that lands on another tab (back, forward)
-    // selects that one instead.
-    const [selectedTab, setSelectedTab] = useState(tab);
-    const [loadedTab, setLoadedTab] = useState(tab);
-
-    if (tab !== loadedTab) {
-        setLoadedTab(tab);
-        setSelectedTab(tab);
-    }
+    const [selectedTab, setSelectedTab] = useSelectedTab(tab);
 
     const feedTabs = [
         {
